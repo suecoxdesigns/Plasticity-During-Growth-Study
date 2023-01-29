@@ -1,0 +1,369 @@
+---
+title: "Untitled"
+author: "Zanne"
+date: "7/22/2019"
+output:
+  word_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Outline of six Month Morphology Paper
+
+```{r cars, echo=FALSE, include=FALSE, warning='hide'}
+setwd('C:/Users/smc288/Box/Suzanne_Cox/SuzanneGF/Botox and Growth/SixMonthMorphPaper/MatlabCode/Data')
+t=read.csv('MorphData29 May 2020.csv')
+ll = read.csv('LegLengths.csv')
+es = read.csv('ElasticData05 Jun 2020.csv')
+
+
+es$tendonEGpa = es$tendonE/1e9
+es$KE = 0.5*es$mass*es$maxV^2
+es$workPKg = es$work/(2*es$sumExtensors/1000)
+
+es$legLength = es$femur+es$tibia+es$tmt+es$toe
+es$femurN = es$femur/es$legLength
+es$tibiaN = es$tibia/es$legLength
+es$tmtN = es$tmt/es$legLength
+es$toeN = es$toe/es$legLength
+
+ed = es[es$group=='E' |es$group=='D',]
+ed$group = droplevels(ed$group)
+
+
+```
+
+```{r Functions, echo=FALSE, include=FALSE, warning='hide'}
+require('lme4')
+require('stringr')
+require('doBy')
+require('plyr')
+require('extrafont')
+require('MHTdiscrete')
+require('psych')
+require('lsr')
+require('MASS')
+loadfonts(device='win')
+
+windowsFonts(
+  A=windowsFont("Garamond"),
+  B=windowsFont("Aerial"),
+  C=windowsFont("Times New Roman")
+)
+
+
+lmp <- function (modelobject) {
+  if (class(modelobject) != "lm") stop("Not an object of class 'lm' ")
+  f <- summary(modelobject)$fstatistic
+  p <- pf(f[1],f[2],f[3],lower.tail=F)
+  attributes(p) <- NULL
+  return(p)
+}
+
+boxPoint = function(var,fact,titletxt, cols, groupNames){
+    resp=var
+ treat=fact
+ par(family='Garamond')
+ if(missing(cols)) {cols = 'grey'}
+bTest =  bartlett.test(resp~treat)
+if (bTest$p.value<0.05) {nonparametric = 1}
+else {nonparametric = 0}
+
+if (nonparametric)  {
+  Test = kruskal.test(resp~treat)
+  pVal = Test$p.value}
+else {
+  if (nlevels(treat)==2){
+    Test= t.test(resp~treat)
+    pVal = Test$p.value}
+  else {pVal = anova(lm(mass~group,data=d))$"Pr(>F)"[1]}
+}
+if ((missing(groupNames))){
+  groupNames = levels(var)
+}
+if ((missing(titletxt))){
+  titletxt = 'variable'
+}
+
+titletxt = str_c(titletxt,' p:', format(pVal,digits=2))
+boxplot(resp~treat, main=titletxt,las=2,col=cols, cex.axis=1.2, names = groupNames)
+stripchart(resp~treat, vertical=TRUE, add=TRUE, pch=16,col='red',method='jitter',cex=1)
+}
+
+
+
+plotStats = function(dependent,independent,dta,fctor, titletxt, cols){
+  x=unlist(dta[names(dta)==independent])
+  y=unlist(dta[names(dta)==dependent])
+ group = unlist(dta[names(dta)==fctor])
+ lmFit = lm(x~y)
+pValFit = summary(lmFit)
+if ((missing(titletxt))){titletxt = str_c(dependent,' vs ',independent)}
+if ((missing(cols))){cols = c('white','grey50')}
+titletxt = str_c(titletxt,' p:',format(pValFit$coefficients[2,4],digits=2))
+plot(y~x,main =titletxt , pch=21,bg=cols[as.numeric(group)],col='black', cex=1.2, xlab = independent, ylab = dependent)
+legend('bottomright',levels(group),pch=21,pt.bg=cols,cex=1.2,col='black',inset=c(0,1), xpd=TRUE, horiz=TRUE, bty="n")
+}
+
+
+tableFormatByGroup = function(var,fctor,dta){
+  y=unlist(dta[var])
+  group =unlist(dta[fctor])
+  meanVar = aggregate(y~group,data=dta,function(x) mean(x,na.rm=TRUE),na.action=na.pass)
+  sdVar = aggregate(y~group,data=dta,function(x) sd(x,na.rm=TRUE),na.action=na.pass)
+  if (sdVar$y[1] ==0 |sdVar$y[2] ==0){
+    nonparametric=0
+    pVal = 1
+  } else {
+    bTest =  bartlett.test(y~group,data=dta)
+    nonparametric = ifelse(bTest$p.value<0.05,1,0)
+    
+    if (nonparametric)  {
+      Test = kruskal.test(y~group,data=dta)
+      pVal = Test$p.value
+    } else {
+      if (nlevels(group)==2){
+        Test= t.test(y~group)
+        pVal = Test$p.value
+      } else {pVal = anova(lm(y~group,data=dta))$"Pr(>F)"[1]}
+    }
+  }
+  cohd = cohensD(y~group)
+  varString = ' '
+for (i in 1:nlevels(group)){varString[i] = str_c(format(meanVar[i,2],digits=2),'+-',format(sdVar[i,2],digits=2))}
+varString[i+1] = ifelse(nonparametric,str_c(format(pVal,digits=2),'*'),str_c(format(pVal,digits=2)))
+
+varString[i+2]= format(cohd, digits=2)
+return(varString)
+}
+
+
+
+
+```
+
+## Questions  a) Reductionist Level
+
+1. Do components of MTU's change in response to changes in functional demand?  Specifically, Do individuals with the same functional demands adapt their MTU components is a systematic way?
+
+
+
+```{r tableFunctional1, echo=FALSE, results='asis', fig.width=8, warning=FALSE, message=FALSE, fig.height=7}
+
+dta=ed
+require('pander')
+panderOptions('round',1)
+panderOptions('table.style','rmarkdown')
+panderOptions("table.split.table", Inf) 
+panderOptions('keep.trailing.zeros',TRUE)
+library(plyr)
+#functional data
+totalsEd = count (ed$group)
+totalsEd[3,2] = ' '
+totalsEd[4,2] = ' '
+massString = tableFormatByGroup('mass','group',ed)
+bDensityString = tableFormatByGroup('BmdGcm2','group',ed)
+perFatString =  tableFormatByGroup('PerFat','group',ed)
+avMaString =  tableFormatByGroup('avMa','group',ed)
+tendonKString = tableFormatByGroup('tendonK','group',ed)
+legLengthString =  tableFormatByGroup('legLength','group',ed)
+femurNString =  tableFormatByGroup('femurN','group',ed)
+tibiaNString =  tableFormatByGroup('tibiaN','group',ed)
+tmtNString =  tableFormatByGroup('tmtN','group',ed)
+toeNString =  tableFormatByGroup('toeN','group',ed)
+
+
+table.Functional = data.frame(totalsEd[,2],massString,bDensityString,perFatString,avMaString,tendonKString, legLengthString, femurNString,tibiaNString,tmtNString,toeNString)
+row.names(table.Functional) = c('Restricted','Control','pVal','ES')
+colnames(table.Functional) = c('Total animals','mass (kg)','Bone Density cm2','Percent Fat','Moment Arm mm','Tendon Stiffness','Leg Length mm','N.femur Length','n.tibia Length','n.tmt Length','n.toeLength')
+table2.Functional = as.data.frame(t(table.Functional))
+library(knitr)
+pandoc.table(table2.Functional, caption='Table 1: Morpgh data by treatment', justify='center')
+
+
+```
+
+
+```{r tableMorph2, echo=FALSE, fig.height=7, fig.width=8, message=FALSE, warning=FALSE, results='asis'}
+dta = ed
+require('pander')
+panderOptions('round',1)
+panderOptions('table.style','rmarkdown')
+panderOptions("table.split.table", Inf) 
+panderOptions('keep.trailing.zeros',TRUE)
+library(plyr)
+#functional data
+
+lgMassString = tableFormatByGroup('LG','group',dta)
+lgAvOflString = tableFormatByGroup('LgAvOfl','group',dta)
+fMaxLgString = tableFormatByGroup('fMaxLg','group',dta)
+optPenAngLg = tableFormatByGroup('optPenAngLg','group',dta)
+tendonSlackLengthLgmm = tableFormatByGroup('tendonSlackLengthLGmm','group',dta)
+  
+mgMassString = tableFormatByGroup('MG','group',dta)
+mgAvOflString = tableFormatByGroup('MgAvOfl','group',dta)
+fMaxMgString = tableFormatByGroup('fMaxMg','group',dta)
+optPenAngMg = tableFormatByGroup('optPenAngMg','group',dta)
+tendonSlackLengthMgmm = tableFormatByGroup('tendonSlackLengthMGmm','group',dta)
+   
+  
+  table.Functional = data.frame(lgMassString,lgAvOflString,fMaxLgString,optPenAngLg,tendonSlackLengthLgmm,mgMassString,mgAvOflString,fMaxMgString,optPenAngMg,tendonSlackLengthMgmm)
+row.names(table.Functional) = c('Restricted','Control','pVal','ES')
+colnames(table.Functional) = c('LG Mass','Lg OFL','LG F max','LG Pen Ang','LG Tendon SL','MG Mass','Mg OFL','MG F max','MG Pen Ang','MG Tendon SL')
+table2.Functional = as.data.frame(t(table.Functional))
+library(knitr)
+pandoc.table(table2.Functional, caption='Table 1: Morpgh data by treatment', justify='center')
+
+
+```
+
+
+
+## Systems level Question 1:  Can birds restricted from jumping store less energy in their tendon in preparation for a jump??
+
+
+This is where I make subject specific OSim models and set them all to a range of crouch postures and stimulate LG and MG at 100% (??) to see how much they could strain their tendon.  
+
+
+
+```{r elasticstorageLinear, echo=FALSE,fig.height = 5.5, fig.width=6}
+
+
+cols = c('steelblue4','grey50')
+par(mfrow=c(1,2))
+par(oma=c(1.5,2,2,0),family='Garamond',xpd=NA,mgp=c(2.2,0.7,0), mar=c(2,3.5,1.5,1))
+par(ps = 16,cex=2,cex.main=1.5)
+layout(matrix(c(1,1,2,2), nrow = 1, ncol = 4, byrow = TRUE))
+
+ese = ed[ed$group=='E',]
+esd = ed[ed$group=='D',]
+
+
+plot(maxPowerPKg~PEc,data=ed,col='black',pch=21,ylab='Peak Jump Power W/kg',xlab = 'Tendon Strain Energy J',cex=2,bg=c('steelblue4','grey50')[as.numeric(ed$group)],cex.lab = 1.5, cex.axis=1.2 )
+
+plot(workPKg~PEc,data=ed,col='black',pch=21,ylab='Jump Work J/kg',xlab = 'Tendon Strain Energy J',cex=2,bg=c('steelblue4','grey50')[as.numeric(ed$group)],cex.lab = 1.5, cex.axis=1.2 )
+
+
+esdFit = lm(KE~PE,data=ed)
+summary(esdFit)
+
+#abline(esdFit)
+t.test(PE~group,data=ed)
+```
+
+```{r elasticstorageBoxPlot, echo=FALSE,fig.height = 5.5, fig.width=3}
+
+
+par(mfrow=c(1,1))
+groupNames = c('Restricted','Control')
+cols = c('steelblue4','grey50')
+boxplot(PE~group,data=ed,col=c('steelblue4','grey50'), names= groupNames, cex.lab = 1.4, cex.axis = 1.2, ylab = 'Energy Storage J', at=c(0.85,1.15),boxwex=0.2, xlim=c(0.7,1.3) )
+
+ese = ed[ed$group=='E',]
+esd = ed[ed$group=='D',]
+
+stripchart(ese$PE, vertical=TRUE, add=TRUE, pch=21,bg='grey50',method='jitter',cex=1.5, at=c(1.15),jitter=0.05)
+stripchart(esd$PE, vertical=TRUE, add=TRUE, pch=21,bg='steelblue4',method='jitter',cex=1.5, at=c(0.85),jitter=0.05)
+
+
+```
+
+```{r ModelComparisons, echo=FALSE,results=FALSE,fig.height = 5.5, fig.width=6}
+ed = es[es$group=='E' |es$group=='D',]
+ed$group = droplevels(ed$group)
+ed$avOFL = (ed$LgAvOfl+ed$LgAvOfl)/2
+ed$sumMaxF = ed$fMaxLg+ed$fMaxMg
+ed$AvLenA0c = ed$LgLenA0c+ed$MgLenA0c
+fullModel = lm(PEc~sumMaxF*tendonK*AvLenA0c,data=ed)
+AIC(fullModel)
+stepResults = stepAIC(fullModel, direction ='both')
+summary(stepResults)
+AIC(stepResults)
+
+#Individual models
+nullModel =  lm(PEc~1,data=ed)
+fmaxModel =  lm(PEc~sumMaxF,data=ed)
+tendonKModel =  lm(PEc~tendonK,data=ed)
+AvLenA0cModel =  lm(PEc~AvLenA0c,data=ed)
+summary(nullModel)
+
+summary(fmaxModel)
+summary(tendonKModel)
+summary(AvLenA0cModel)
+
+
+
+aicNull = AIC(nullModel)
+aicFmax = AIC(fmaxModel)
+aicTendonK = AIC(tendonKModel)
+aicLenAo = AIC(AvLenA0cModel)
+
+
+PredictAIC =c(aicNull,aicFmax,aicTendonK,aicLenAo)
+minAIC = min(PredictAIC)
+delAIC = PredictAIC-PredictAIC[1]
+wAIC = exp(-1/2*delAIC)/exp(-1/2*sum(delAIC))
+xtimes =wAIC/wAIC[1]
+r2 = 1-(xtimes[2]/xtimes[1])^(2/length(df))
+
+PredictAIC2 =c(-61,aicFmax,aicTendonK,aicLenAo)
+minAIC2 = min(PredictAIC2)
+delAIC2 = PredictAIC2-min(PredictAIC2)
+wAIC2 = exp(-1/2*delAIC2)/exp(-1/2*sum(delAIC2))
+xtimes2 =wAIC2[1]/wAIC2
+r2 = 1-(xtimes[2]/xtimes[1])^(2/length(df))
+
+```
+
+
+```{r PETable,echo=FALSE, fig.height=7, fig.width=8, message=FALSE, warning=FALSE, results='asis'}
+
+require('pander')
+panderOptions('round',1)
+panderOptions('table.style','rmarkdown')
+panderOptions("table.split.table", Inf) 
+panderOptions('keep.trailing.zeros',TRUE)
+library(plyr)
+
+
+ed = es[es$group=='E' |es$group=='D',]
+ed$group = droplevels(ed$group)
+
+#functional data
+ed$AvLenA0 = (ed$LgLenA0+ed$MgLenA0)/2
+ed$AvLenA100 = (ed$LgLenA100+ed$MgLenA100)/2
+
+ed$AvLenA0c = (ed$LgLenA0c+ed$MgLenA0c)/2
+ed$AvLenA100c = (ed$LgLenA100c+ed$MgLenA100c)/2
+
+PeString = tableFormatByGroup('PE','group',ed)
+LgFlA0String = tableFormatByGroup('LgLenA0','group',ed)
+LgFlA100String = tableFormatByGroup('LgLenA100','group',ed)
+MgFlA0String = tableFormatByGroup('MgLenA0','group',ed)
+MgFlA100String = tableFormatByGroup('MgLenA100','group',ed)
+
+PecString = tableFormatByGroup('PEc','group',ed)
+LgFlA0cString = tableFormatByGroup('LgLenA0c','group',ed)
+LgFlA100cString = tableFormatByGroup('LgLenA100c','group',ed)
+MgFlA0cString = tableFormatByGroup('MgLenA0c','group',ed)
+MgFlA100cString = tableFormatByGroup('MgLenA100c','group',ed)
+
+kneeMaxPeString =  tableFormatByGroup('PEvals_1','group',ed)
+ankleMaxPeString =  tableFormatByGroup('PEvals_3','group',ed)
+
+  table3.Functional = data.frame(PeString,LgFlA0String,MgFlA0String,LgFlA100String,MgFlA100String,PecString,LgFlA0cString,MgFlA0cString,LgFlA100cString,MgFlA100cString,kneeMaxPeString,ankleMaxPeString)
+row.names(table3.Functional) = c('Restricted','Control','pVal','ES')
+colnames(table3.Functional) = c('Energy Storage Potential','LG FL at A0','MG FL at A0','LG FL at A100','MG FL at A100','Energy Storage Potential','LG FL at A0','MG FL at A0','LG FL at A100','MG FL at A100','Knee Angle at Max PE','Ankle Angle at Max PE')
+table3.Functional = as.data.frame(t(table3.Functional))
+library(knitr)
+pandoc.table(table3.Functional, caption='Table 3: Energy Storage By Group', justify='center')
+
+
+
+```
+
