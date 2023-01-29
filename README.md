@@ -39,6 +39,8 @@ plasticity may explain performance variation
 ###  Data Analysis pipeline
 
 1. **Collect and Analyze Force data from jumping tests of 16 Guinea Fowl**
++ *Exercise* group allowed to exercise throughout growth
++ *Disuse* group restrict from exercise throughout growth
 
     + As described previously (Cox et al., 2020), at skeletal maturity
 (between 29 and 31 weeks old) jump performance was measured by
