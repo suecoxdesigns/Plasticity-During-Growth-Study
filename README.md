@@ -7,8 +7,8 @@ output:
   pdf_document: default
   html_document: default
 ---
+## Plasticity of the gastrocnemius elastic system in response to decreased work and power demand during growth
 
-## This README details the data analysis files for this project
 
 
 ####  Abstract
